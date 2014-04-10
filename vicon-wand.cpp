@@ -4,6 +4,7 @@
 #include <GL/glut.h>
 
 #include <unistd.h>
+#include <string.h>
 #include <iostream>
 #include <fstream>
 #include <cassert>
@@ -20,6 +21,7 @@
 using namespace ViconDataStreamSDK::CPP;
 
 // Make a new vicon client
+bool vicon_enabled = true;
 Client MyClient;
 std::string HostName = "141.219.28.17:801";
 //std::string HostName = "localhost:801";
@@ -27,7 +29,10 @@ std::string HostName = "141.219.28.17:801";
 std::string CamSubjectName = "Wand";
 std::string CamSegmentName = "Wand";
 
-// screen width/height indicate the size of the window on our screen (not the size of the display wall). The aspect ratio must match the actual display wall.
+// screen width/height indicate the size of the window on our screen 
+// (not the size of the display wall). The aspect ratio must match 
+// the actual display wall
+
 const GLdouble SCREEN_WIDTH = (1920*6)/8.0;  
 const GLdouble SCREEN_HEIGHT = (1080.0*4)/8.0;
 const float screenAspectRatio = SCREEN_WIDTH/SCREEN_HEIGHT;
@@ -160,79 +165,85 @@ namespace
 
 void viconExit()
 {
-    MyClient.DisableSegmentData();
-//    MyClient.DisableMarkerData();
-//    MyClient.DisableUnlabeledMarkerData();
-//    MyClient.DisableDeviceData();
+	if(vicon_enabled){
+	    MyClient.DisableSegmentData();
+	//    MyClient.DisableMarkerData();
+	//    MyClient.DisableUnlabeledMarkerData();
+	//    MyClient.DisableDeviceData();
 
-	// TODO: Disconnect seems to cause a hang. -Scott Kuhl
-    // Disconnect and dispose
-    int t = clock();
-    std::cout << " Disconnecting..." << std::endl;
-    MyClient.Disconnect();
-    int dt = clock() - t;
-    double secs = (double) (dt)/(double)CLOCKS_PER_SEC;
-    std::cout << " Disconnect time = " << secs << " secs" << std::endl;
+		// TODO: Disconnect seems to cause a hang. -Scott Kuhl
+	    // Disconnect and dispose
+	    int t = clock();
+	    std::cout << " Disconnecting..." << std::endl;
+	    MyClient.Disconnect();
+	    int dt = clock() - t;
+	    double secs = (double) (dt)/(double)CLOCKS_PER_SEC;
+	    std::cout << " Disconnect time = " << secs << " secs" << std::endl;
+	}
 }
 
 void viconInit()
 {
-    // Connect to a server
-    std::cout << "Connecting to " << HostName << " ..." << std::flush;
-	int attemptConnectCount = 0;
-	const int MAX_CONNECT_ATTEMPTS=2;
-    while( !MyClient.IsConnected().Connected && attemptConnectCount < MAX_CONNECT_ATTEMPTS)
-    {
-		attemptConnectCount++;
-		bool ok = false;
-		ok =( MyClient.Connect( HostName ).Result == Result::Success );
-		if(!ok)
-			std::cout << "Warning - connect failed..." << std::endl;
-		std::cout << ".";
-		sleep(1);
-    }
-	if(attemptConnectCount == MAX_CONNECT_ATTEMPTS)
-	{
-		printf("Giving up making connection to Vicon system\n");
-		return;
+	if(vicon_enabled){
+	    // Connect to a server
+	    std::cout << "Connecting to " << HostName << " ..." << std::flush;
+		int attemptConnectCount = 0;
+		const int MAX_CONNECT_ATTEMPTS=2;
+	    while( !MyClient.IsConnected().Connected && attemptConnectCount < MAX_CONNECT_ATTEMPTS)
+	    {
+			attemptConnectCount++;
+			bool ok = false;
+			ok =( MyClient.Connect( HostName ).Result == Result::Success );
+			if(!ok)
+				std::cout << "Warning - connect failed..." << std::endl;
+			std::cout << ".";
+			sleep(1);
+	    }
+		if(attemptConnectCount >= MAX_CONNECT_ATTEMPTS)
+		{
+			printf("Giving up making connection to Vicon system\n");
+			printf("Falling through to 'local' mode...\n");
+			vicon_enabled = false;
+			return;
+		}
+	    std::cout << std::endl;
+
+	    // Enable some different data types
+	    MyClient.EnableSegmentData();
+	    //MyClient.EnableMarkerData();
+	    //MyClient.EnableUnlabeledMarkerData();
+	    //MyClient.EnableDeviceData();
+
+	    std::cout << "Segment Data Enabled: "          << Adapt( MyClient.IsSegmentDataEnabled().Enabled )         << std::endl;
+	    std::cout << "Marker Data Enabled: "           << Adapt( MyClient.IsMarkerDataEnabled().Enabled )          << std::endl;
+	    std::cout << "Unlabeled Marker Data Enabled: " << Adapt( MyClient.IsUnlabeledMarkerDataEnabled().Enabled ) << std::endl;
+	    std::cout << "Device Data Enabled: "           << Adapt( MyClient.IsDeviceDataEnabled().Enabled )          << std::endl;
+
+	    // Set the streaming mode
+	    //MyClient.SetStreamMode( ViconDataStreamSDK::CPP::StreamMode::ClientPull );
+	    // MyClient.SetStreamMode( ViconDataStreamSDK::CPP::StreamMode::ClientPullPreFetch );
+	    MyClient.SetStreamMode( ViconDataStreamSDK::CPP::StreamMode::ServerPush );
+
+	    // Set the global up axis
+	    MyClient.SetAxisMapping( Direction::Forward, 
+	                             Direction::Left, 
+	                             Direction::Up ); // Z-up
+	    // MyClient.SetGlobalUpAxis( Direction::Forward, 
+	    //                           Direction::Up, 
+	    //                           Direction::Right ); // Y-up
+
+	    Output_GetAxisMapping _Output_GetAxisMapping = MyClient.GetAxisMapping();
+	    std::cout << "Axis Mapping: X-" << Adapt( _Output_GetAxisMapping.XAxis ) 
+				  << " Y-" << Adapt( _Output_GetAxisMapping.YAxis ) 
+				  << " Z-" << Adapt( _Output_GetAxisMapping.ZAxis ) << std::endl;
+
+	    // Discover the version number
+	    Output_GetVersion _Output_GetVersion = MyClient.GetVersion();
+	    std::cout << "Version: " << _Output_GetVersion.Major << "." 
+				  << _Output_GetVersion.Minor << "." 
+				  << _Output_GetVersion.Point << std::endl;
+		vicon_enabled = true;
 	}
-    std::cout << std::endl;
-
-    // Enable some different data types
-    MyClient.EnableSegmentData();
-    //MyClient.EnableMarkerData();
-    //MyClient.EnableUnlabeledMarkerData();
-    //MyClient.EnableDeviceData();
-
-    std::cout << "Segment Data Enabled: "          << Adapt( MyClient.IsSegmentDataEnabled().Enabled )         << std::endl;
-    std::cout << "Marker Data Enabled: "           << Adapt( MyClient.IsMarkerDataEnabled().Enabled )          << std::endl;
-    std::cout << "Unlabeled Marker Data Enabled: " << Adapt( MyClient.IsUnlabeledMarkerDataEnabled().Enabled ) << std::endl;
-    std::cout << "Device Data Enabled: "           << Adapt( MyClient.IsDeviceDataEnabled().Enabled )          << std::endl;
-
-    // Set the streaming mode
-    //MyClient.SetStreamMode( ViconDataStreamSDK::CPP::StreamMode::ClientPull );
-    // MyClient.SetStreamMode( ViconDataStreamSDK::CPP::StreamMode::ClientPullPreFetch );
-    MyClient.SetStreamMode( ViconDataStreamSDK::CPP::StreamMode::ServerPush );
-
-    // Set the global up axis
-    MyClient.SetAxisMapping( Direction::Forward, 
-                             Direction::Left, 
-                             Direction::Up ); // Z-up
-    // MyClient.SetGlobalUpAxis( Direction::Forward, 
-    //                           Direction::Up, 
-    //                           Direction::Right ); // Y-up
-
-    Output_GetAxisMapping _Output_GetAxisMapping = MyClient.GetAxisMapping();
-    std::cout << "Axis Mapping: X-" << Adapt( _Output_GetAxisMapping.XAxis ) 
-			  << " Y-" << Adapt( _Output_GetAxisMapping.YAxis ) 
-			  << " Z-" << Adapt( _Output_GetAxisMapping.ZAxis ) << std::endl;
-
-    // Discover the version number
-    Output_GetVersion _Output_GetVersion = MyClient.GetVersion();
-    std::cout << "Version: " << _Output_GetVersion.Major << "." 
-			  << _Output_GetVersion.Minor << "." 
-			  << _Output_GetVersion.Point << std::endl;
-
 }
 
 
@@ -301,72 +312,69 @@ void display()
 	glClear(GL_COLOR_BUFFER_BIT|GL_DEPTH_BUFFER_BIT);
 	glColor3f(1,1,1);
 
-	// Get a frame
-	if(MyClient.GetFrame().Result != Result::Success )
-		printf("WARNING: Inside display() and there is no data from Vicon...\n");
+	
 
 	glMatrixMode(GL_PROJECTION);
 	glLoadIdentity();
 
-#if 0
-	gluPerspective(45, screenAspectRatio, .1, 30);
-
-	glMatrixMode(GL_MODELVIEW);
-	glLoadIdentity();
-	gluLookAt(0,4,1.67,
-		  0,0,1.67,
-		  0,0,1);
-
-#else
-	Output_GetSegmentGlobalTranslation globalTranslateDude = MyClient.GetSegmentGlobalTranslation( CamSubjectName,CamSegmentName);
-	float x = globalTranslateDude.Translation[ 0 ] / 1000;
-	float y = globalTranslateDude.Translation[ 1 ] / 1000;
-	float z = globalTranslateDude.Translation[ 2 ] / 1000;
+	float x,y,z;
 	
+
+	if(vicon_enabled){
+		// Get a frame
+		if(MyClient.GetFrame().Result != Result::Success )
+		printf("WARNING: Inside display() and there is no data from Vicon...\n");
+
+		Output_GetSegmentGlobalTranslation globalTranslateDude = MyClient.GetSegmentGlobalTranslation( CamSubjectName,CamSegmentName);
+		x = globalTranslateDude.Translation[ 0 ] / 1000;
+		y = globalTranslateDude.Translation[ 1 ] / 1000;
+		z = globalTranslateDude.Translation[ 2 ] / 1000;
 		
+			
 
-	printf("%f %f %f\n",x,y,z);
-	// bottom of screen z=11 inches or .28 meters
-	// top of screen z~8.5 feet or 2.6 meters
-	// 1 screen width 40.5 inches or 1.03 meters
-	// screen y=3.327 meters - y is the distance to the screen from origin
-	// the x axis runs horizontally (negative x on the left-hand side of screen)
-	// -.4 is to adjust for the fact that the screens aren't centered in front of origin.
-	float left   = -1.03*3-x;
-	float right  =  1.03*3-x;
-	float bottom =  0.28-z;
-	float top    =  2.60-z;
-	float near   =  3.9-y;
-	float far    =  30;
-	//printf("%f %f %f %f %f %f\n", left, right, bottom, top, near, far);
-	
-	glFrustum(left, right, bottom, top, near, far);
-	//gluPerspective(45, screenAspectRatio, .1, 30);
+		printf("%f %f %f\n",x,y,z);
+		// bottom of screen z=11 inches or .28 meters
+		// top of screen z~8.5 feet or 2.6 meters
+		// 1 screen width 40.5 inches or 1.03 meters
+		// screen y=3.327 meters - y is the distance to the screen from origin
+		// the x axis runs horizontally (negative x on the left-hand side of screen)
+		// -.4 is to adjust for the fact that the screens aren't centered in front of origin.
+		float left   = -1.03*3-x;
+		float right  =  1.03*3-x;
+		float bottom =  0.28-z;
+		float top    =  2.60-z;
+		float near   =  3.9-y;
+		float far    =  30;
+		//printf("%f %f %f %f %f %f\n", left, right, bottom, top, near, far);
+		
+		glFrustum(left, right, bottom, top, near, far);
+		//gluPerspective(45, screenAspectRatio, .1, 30);
+	}
+	else{
+		gluPerspective(45, screenAspectRatio, .1, 30);
+	}
 
 	glMatrixMode(GL_MODELVIEW);
 	glLoadIdentity();
-	glRotatef(-90,1,0,0);
-	Output_GetSegmentGlobalRotationMatrix _Output_RotationMatrix = MyClient.GetSegmentGlobalRotationMatrix(CamSubjectName,CamSegmentName);
-	double camMatrix[16] = { _Output_RotationMatrix.Rotation[ 0 ],
-					_Output_RotationMatrix.Rotation[ 3 ],
-					_Output_RotationMatrix.Rotation[ 6 ],
-					0, // end of column 1
-					_Output_RotationMatrix.Rotation[ 1 ],
-					_Output_RotationMatrix.Rotation[ 4 ],
-					_Output_RotationMatrix.Rotation[ 7 ],
-					0, // end of column 2
-					_Output_RotationMatrix.Rotation[ 2 ],
-					_Output_RotationMatrix.Rotation[ 5 ],
-					_Output_RotationMatrix.Rotation[ 8 ],
-					0, // end of column 3
-					
-					
-					0, 0, 0, 1 }; // end of column 4
 
-	glMultMatrixd(camMatrix);
-#endif
 
-	glTranslatef(0,-8,0);
+	
+
+	if(vicon_enabled){
+		gluLookAt(	-x,		-y,		z,
+			  		-x,		-y-1,   z,
+		   			0,		0,   	1 	);
+	}
+	else{
+		glRotatef(10.0,1,0,0);
+		gluLookAt(	2,		4,		2.5,
+					0,		0,		1.67,
+					0,		0,		1 	);
+	}
+
+
+	glTranslatef(0,-2,-1);
+
 	  
 	// Draw a 1x1 meter square at origin.
 	glPointSize(10);
@@ -378,17 +386,51 @@ void display()
 
 	glScalef(-1,1,1); // make rotations of box act like a mirror
 
-	//addBox("Wand", 1,1,1, 1);
-	addBox("HandR", .9,.2,.1, .3);
-	addBox("HandOR", .1,1,.2, .3);
-	addBox("FootL", .2,.1,.95, .3);
-	addBox("FootOL", .4,.8,.9, .3);
-	glTranslatef(0,0,-30);
-  	glScalef (8.0, 8.0, 8.0);
-  	glRotatef(.1, 0.0f, 1.0f, 0.0f);
-  	glutWireCube (10.0);
+	if(vicon_enabled){
+		//addBox("Wand", 1,1,1, 1);
+		addBox("HandR", .9,.2,.1, .3);
+		addBox("HandOR", .1,1,.2, .3);
+		addBox("FootL", .2,.1,.95, .3);
+		addBox("FootOL", .4,.8,.9, .3);
+	}
+	else{
 
-
+		float size = 1;
+		float red,green,blue;
+		//add an array of four boxes
+		//box 1
+		glPushMatrix();
+		//set colour
+		red=.2; green=.1; blue=.3;
+		glTranslatef(size, size, size);
+		glColor3f(red, green, blue);
+		glutSolidCube(size); // 1x1x1 cube.
+		glPopMatrix();
+		//box 2
+		glPushMatrix();
+		//set colour
+		red=1; green=.2; blue=.3;
+		glTranslatef(-size, size, size);
+		glColor3f(red, green, blue);
+		glutSolidCube(size); // 1x1x1 cube.
+		glPopMatrix();
+		//box 3
+		glPushMatrix();
+		//set colour
+		red=.2; green=.1; blue=.3;
+		glTranslatef(size, -size, size);
+		glColor3f(red, green, blue);
+		glutSolidCube(size); // 1x1x1 cube.
+		glPopMatrix();
+		//box 3
+		glPushMatrix();
+		//set colour
+		red=.8; green=.9; blue=.3;
+		glTranslatef(-size, -size, size);
+		glColor3f(red, green, blue);
+		glutSolidCube(size); // 1x1x1 cube.
+		glPopMatrix();
+	}
 
 	glFlush();
 	glutSwapBuffers();
@@ -398,6 +440,14 @@ void display()
 
 int main( int argc, char* argv[] )
 {
+	printf("%s\n",argv[1]);
+	printf("%d\n",argc);
+	if(argc != 1 && (strcmp(argv[1],"local") ==0 ) )
+	{
+		printf("%s\n","vicon disabled");
+		vicon_enabled = false;
+	}
+
 	glutInit(&argc, argv); //initialize the toolkit
 	glutInitDisplayMode(GLUT_DOUBLE | GLUT_RGB | GLUT_DEPTH);  //set display mode
 	glutInitWindowSize(SCREEN_WIDTH, SCREEN_HEIGHT); //set window size
@@ -412,7 +462,7 @@ int main( int argc, char* argv[] )
 	glutKeyboardFunc(keyboard);
 
 	atexit(exitCallback);
-	viconInit();
+	if(vicon_enabled)viconInit();
 
 	glutMainLoop();
 

@@ -15,7 +15,7 @@ GLEW_INC=-I/usr/local/glew/1.9.0/include
 GLEW_LIBS=-Wl,-rpath,/usr/local/glew/1.9.0/lib -L/usr/local/glew/1.9.0/lib -lGLEW
 endif
 
-VICON_LIBS=-L../vicon-libs -Wl,-rpath,../vicon-libs -lViconDataStreamSDK_CPP
+VICON_LIBS=-L./vicon-libs -Wl,-rpath,./vicon-libs -lViconDataStreamSDK_CPP
 BASIC_LIBS=-lGL -lstdc++ -lc -lm -lglut -lGLU
 
 ALL_LIBS=${GLEW_LIBS} ${VICON_LIBS} ${BASIC_LIBS}
