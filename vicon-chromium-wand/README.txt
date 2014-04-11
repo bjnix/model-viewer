@@ -1,0 +1,1 @@
+This is a chromium application which creates a cube that a user can manipulate by moving the Vicon wand around. Calibrate the system with the wand sitting in the middle of the room and with the handle pointing toward the display wall. This program should display an image on the display wall from the view of a virtual camera sitting in the middle of the display wall.

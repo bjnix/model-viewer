@@ -1,0 +1,128 @@
+#!/usr/bin/env bash
+
+# This script automates the process of using chromium.
+
+# Chromium looks for a ~/.crconfig file which points Chromium to a
+# python file that contains information about the screens. This python
+# file ends up starting a chromium server on each of the tile
+# computers. The server is started as a script---and it should be in
+# your home directory---which is available on all of the tile nodes.
+
+# localhost is the default value, set environment variable anyway since we will see warnings about it if we dont'...
+export CRMOTHERSHIP="localhost"
+
+# The hostname that we expect to be running on:
+EXPECT_HOSTNAME="ivs.research.mtu.edu"
+
+CRPATH_LIB="/share/apps/chromium/1.9/lib/Linux"
+CRPATH_BIN="/share/apps/chromium/1.9/bin/Linux"
+
+if [[ $# -lt 1 ]]; then
+   echo "Usage: $0 programName argument1 argument2 ..."
+   exit
+fi
+
+if [[ `dirname $1` != "." ]]; then
+   echo "cd into the same directory as \"$2\" before running."
+   exit
+fi
+
+
+if [[ ! -e crconfig.conf ]]; then
+    echo "crconfig.conf is missing. It must be in the current directory!"
+    exit
+fi
+
+if [[ -z $DISPLAY && -n $SSH_TTY ]]; then
+    echo "X forwarding is not enabled."
+    echo "It looks like we are in an SSH session and DISPLAY environment variable is not set."
+    echo "You should log out, use \"ssh -Y $EXPECT_HOSTNAME\" and try again."
+    exit
+fi
+
+if [[ ${HOSTNAME} != ${EXPECT_HOSTNAME} ]]; then
+    echo "Chromium should be run on $EXPECT_HOSTNAME (but you are running it on ${HOSTNAME})."
+    exit
+fi
+
+
+# Override two OpenGL libraries with chromium-provided GL libraries:
+CRFAKER="${CRPATH_LIB}/libcrfaker.so"
+rm -rf libGL.so.1 libGL.so
+ln -s ${CRFAKER} libGL.so.1
+ln -s ${CRFAKER} libGL.so
+# Use the libraries in our current directory (i.e., the ones we linked to above)
+LD_LIBRARY_PATH=.:${LD_LIBRARY_PATH}
+
+
+
+# Instead of using ~/.crconfigs, just use a basic one that we create here.
+# This file will point to the Python-like file that actually defines our
+# configuration.
+echo "* ${PWD}/crconfig.conf %p" > temp.conf
+export CR_CONFIG_PATH=`pwd`/temp.conf
+
+
+# Put a start-crserver.sh file in the home directory which will be run on each tile machine:
+START_CRSERVER=${HOME}/start-crserver.sh
+cat > ${START_CRSERVER} <<EOI
+#!/usr/bin/env bash
+export PATH="$CRPATH_BIN:\$PATH"
+export LD_LIBRARY_PATH="$CRPATH_LIB:\$LD_LIBRARY_PATH"
+export DISPLAY=:\$1
+export CRMOTHERSHIP=\$3:\$4
+\$2 -mothership \$3:\$4 -port \$5
+EOI
+chmod a+x ${START_CRSERVER}
+
+
+
+# Allow people to run programs in our current directory without prefixing binary with "./"
+export PATH=.:${PATH}
+# Run the program and include any arguments:
+"$@"
+
+
+# cleanup
+
+
+
+# Remove the temp.conf file (stands in place for ~/.crconfigs)
+rm -f ${CR_CONFIG_PATH}
+# Remove ~/start-crserver.sh
+rm -f ${START_CRSERVER}
+
+# Remove links to libraries
+rm -f libGL.so.1
+rm -f libGL.so
+
+echo "Waiting for processes to finish..."
+sleep 5 # wait for everything to die.
+echo
+echo
+GREP_PROCESS_REGEX="crserver\|crconfig.conf\|$1"
+echo "Processes running that may cause issues (owned by OTHER users):"
+ps aux | grep -s "${GREP_PROCESS_REGEX}" | grep -v $USER
+
+
+# If there is a suspicious process owned by ourselves, prompt to kill it.
+# The "grep -v $$" part of the command filters out this script from the list of processes.
+PSTMPFILE="/tmp/${USER}-chromium-script-tmp"
+ps aux | grep $USER | grep -s "${GREP_PROCESS_REGEX}" | grep -v $$ > $PSTMPFILE
+
+if [[ `cat $PSTMPFILE | wc -l` -gt 0 ]]; then
+    echo
+    echo
+    echo "Processes owned by YOU which may cause issues:"
+    cat $PSTMPFILE
+    echo
+    echo -n "Kill the processes immediately above? (type y to kill): "
+    read YN
+    if [[ $YN == 'y' ]]; then
+	cat $PSTMPFILE | awk '{print $2 }' | xargs kill
+	echo
+	echo "Processes which still remain:"
+	ps aux | grep $USER| grep -s "${GREP_PROCESS_REGEX}" | grep -v $$
+    fi
+fi
+
